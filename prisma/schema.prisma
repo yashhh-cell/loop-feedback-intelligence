@@ -1,0 +1,105 @@
+// Prisma schema for LOOP Platform
+// For local development, SQLite allows zero-config testing without external database dependencies.
+// For production with Neon / Supabase PostgreSQL, see schema.postgresql.prisma or set provider = "postgresql".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  users     User[]
+  feedback  Feedback[]
+  themes    Theme[]
+  reports   Report[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         String    @default("ANALYST") // "ADMIN" | "ANALYST" | "VIEWER"
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  reports      Report[]
+
+  @@index([workspaceId])
+}
+
+model Feedback {
+  id            String          @id @default(cuid())
+  content       String
+  channel       String          // "SUPPORT_TICKET" | "APP_STORE" | "NPS_SURVEY" | "SALES_CALL" | "COMMUNITY"
+  sourceRef     String?
+  customerLabel String?
+  sentiment     String          @default("NEU") // "POS" | "NEU" | "NEG"
+  sentimentScore Float          @default(0.0)   // -1.0 to 1.0
+  status        String          @default("NEW") // "NEW" | "REVIEWED" | "ACTIONED"
+  createdAt     DateTime        @default(now())
+  workspaceId   String
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  themes        FeedbackTheme[]
+  embedding     Embedding?
+
+  @@index([workspaceId])
+  @@index([sentiment])
+  @@index([channel])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Theme {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  color       String          @default("#6366f1")
+  workspaceId String
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  feedback    FeedbackTheme[]
+
+  @@index([workspaceId])
+  @@unique([workspaceId, name])
+}
+
+model FeedbackTheme {
+  id         String   @id @default(cuid())
+  feedbackId String
+  themeId    String
+  confidence Float    @default(1.0) // 0.0 to 1.0
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  theme      Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@unique([feedbackId, themeId])
+  @@index([themeId])
+}
+
+model Embedding {
+  id         String   @id @default(cuid())
+  feedbackId String   @unique
+  vector     String   // Serialized JSON vector representation for cosine retrieval & pgvector
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id            String    @id @default(cuid())
+  title         String
+  periodStart   DateTime
+  periodEnd     DateTime
+  contentJson   String    // Structured JSON containing pre-computed metrics & Claude executive narrative
+  createdAt     DateTime  @default(now())
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  generatedById String
+  generatedBy   User      @relation(fields: [generatedById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
